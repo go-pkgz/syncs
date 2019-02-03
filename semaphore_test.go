@@ -2,6 +2,7 @@ package syncs
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -9,23 +10,24 @@ import (
 )
 
 func TestSemaphore(t *testing.T) {
-	var after3Locks, after4Locks bool
+	var locks int32
 	var sema sync.Locker
 	go func() {
 		sema = NewSemaphore(3)
 		sema.Lock()
+		atomic.AddInt32(&locks, 1)
 		sema.Lock()
+		atomic.AddInt32(&locks, 1)
 		sema.Lock()
-		after3Locks = true
+		atomic.AddInt32(&locks, 1)
 		sema.Lock()
-		after4Locks = true
+		atomic.AddInt32(&locks, 1)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
-	assert.True(t, after3Locks, "3 locks ok")
-	assert.False(t, after4Locks, "4 locks should not be able to pass")
+	assert.Equal(t, int32(3), atomic.LoadInt32(&locks), "3 locks ok, hangs on 4th")
 
 	sema.Unlock()
 	time.Sleep(100 * time.Millisecond)
-	assert.True(t, after4Locks, "4 locks ok")
+	assert.Equal(t, int32(4), atomic.LoadInt32(&locks), "4 locks should happen")
 }

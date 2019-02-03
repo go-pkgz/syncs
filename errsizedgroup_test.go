@@ -20,7 +20,7 @@ func TestErrorSizedGroup(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		i := i
 		ewg.Go(func() error {
-			time.Sleep(time.Millisecond)
+			time.Sleep(time.Millisecond * 10)
 			atomic.AddUint32(&c, 1)
 			if i == 100 {
 				return errors.New("err1")
@@ -31,15 +31,15 @@ func TestErrorSizedGroup(t *testing.T) {
 			return nil
 		})
 	}
-	assert.True(t, runtime.NumGoroutine() > 900, "goroutines %d", runtime.NumGoroutine())
+	assert.True(t, runtime.NumGoroutine() > 500, "goroutines %d", runtime.NumGoroutine())
 
 	err := ewg.Wait()
 	assert.True(t, strings.HasPrefix(err.Error(), "2 error(s) occurred:"))
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
 
-func TestErrorSizedGroupPreGo(t *testing.T) {
-	ewg := NewErrSizedGroup(10, Preemptive())
+func TestErrorSizedGroupPreemptive(t *testing.T) {
+	ewg := NewErrSizedGroup(10, Preemptive)
 	var c uint32
 
 	for i := 0; i < 1000; i++ {
@@ -58,6 +58,7 @@ func TestErrorSizedGroupPreGo(t *testing.T) {
 		})
 	}
 
+	assert.True(t, runtime.NumGoroutine() <= 20, "goroutines %d", runtime.NumGoroutine())
 	err := ewg.Wait()
 	assert.True(t, strings.HasPrefix(err.Error(), "2 error(s) occurred:"))
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
@@ -80,7 +81,7 @@ func TestErrorSizedGroupNoError(t *testing.T) {
 }
 
 func TestErrorSizedGroupTerm(t *testing.T) {
-	ewg := NewErrSizedGroup(10, TermOnErr())
+	ewg := NewErrSizedGroup(10, TermOnErr)
 	var c uint32
 
 	for i := 0; i < 1000; i++ {
@@ -100,7 +101,7 @@ func TestErrorSizedGroupTerm(t *testing.T) {
 }
 
 // illustrates the use of a SizedGroup for concurrent, limited execution of goroutines.
-func ExampleErrorSizedGroup_go() {
+func ExampleErrSizedGroup_go() {
 
 	// create sized waiting group allowing maximum 10 goroutines
 	grp := NewErrSizedGroup(10)
