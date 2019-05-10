@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestErrorSizedGroup(t *testing.T) {
@@ -34,6 +35,7 @@ func TestErrorSizedGroup(t *testing.T) {
 	assert.True(t, runtime.NumGoroutine() > 500, "goroutines %d", runtime.NumGoroutine())
 
 	err := ewg.Wait()
+	require.NotNil(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "2 error(s) occurred:"))
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
@@ -60,6 +62,7 @@ func TestErrorSizedGroup_Preemptive(t *testing.T) {
 
 	assert.True(t, runtime.NumGoroutine() <= 20, "goroutines %d", runtime.NumGoroutine())
 	err := ewg.Wait()
+	require.NotNil(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "2 error(s) occurred:"))
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
