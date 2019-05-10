@@ -106,7 +106,7 @@ func (m *multierror) append(err error) *multierror {
 	return m
 }
 
-func (m *multierror) errorOrNil() *multierror {
+func (m *multierror) errorOrNil() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if len(m.errors) == 0 {
