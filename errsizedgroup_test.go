@@ -38,7 +38,7 @@ func TestErrorSizedGroup(t *testing.T) {
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
 
-func TestErrorSizedGroupPreemptive(t *testing.T) {
+func TestErrorSizedGroup_Preemptive(t *testing.T) {
 	ewg := NewErrSizedGroup(10, Preemptive)
 	var c uint32
 
@@ -64,7 +64,7 @@ func TestErrorSizedGroupPreemptive(t *testing.T) {
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
 
-func TestErrorSizedGroupNoError(t *testing.T) {
+func TestErrorSizedGroup_NoError(t *testing.T) {
 	ewg := NewErrSizedGroup(10)
 	var c uint32
 
@@ -80,7 +80,7 @@ func TestErrorSizedGroupNoError(t *testing.T) {
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
 
-func TestErrorSizedGroupTerm(t *testing.T) {
+func TestErrorSizedGroup_Term(t *testing.T) {
 	ewg := NewErrSizedGroup(10, TermOnErr)
 	var c uint32
 
@@ -96,8 +96,14 @@ func TestErrorSizedGroupTerm(t *testing.T) {
 	}
 
 	err := ewg.Wait()
+	assert.NotNil(t, err)
 	assert.Equal(t, "1 error(s) occurred: [0] {err}", err.Error())
 	assert.True(t, c < uint32(1000), fmt.Sprintf("%d, some of routines has to be terminated early", c))
+}
+
+func TestErrorSizedGroup_WaitWithoutGo(t *testing.T) {
+	ewg := NewErrSizedGroup(10)
+	assert.NoError(t, ewg.Wait())
 }
 
 // illustrates the use of a SizedGroup for concurrent, limited execution of goroutines.
