@@ -1,6 +1,6 @@
 # Syncs - additional synchronization primitives 
 
-[![Build Status](https://travis-ci.org/go-pkgz/syncs.svg?branch=master)](https://travis-ci.org/go-pkgz/syncs) [![Go Report Card](https://goreportcard.com/badge/github.com/go-pkgz/syncs)](https://goreportcard.com/report/github.com/go-pkgz/syncs) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/syncs/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/syncs?branch=master)
+[![Build Status](https://github.com/go-pkgz/syncs/workflows/build/badge.svg)](https://github.com/go-pkgz/syncs/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/go-pkgz/syncs)](https://goreportcard.com/report/github.com/go-pkgz/syncs) [![Coverage Status](https://coveralls.io/repos/github/go-pkgz/syncs/badge.svg?branch=master)](https://coveralls.io/github/go-pkgz/syncs?branch=master)
 
 Package syncs provides additional synchronization primitives.
 
