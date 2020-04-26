@@ -29,7 +29,7 @@ Implements `sync.Locker` interface but for given capacity, thread safe. Lock inc
 
 Mix semaphore and WaitGroup to provide sized waiting group. The result is a wait group allowing limited number of goroutine to run in parallel.
 
-By default the locking happens inside of goroutine, i.e. **every call will be non-blocked**, but some goroutines may wait if semaphore locked. It means - technically it doesn't limit number of goroutines, but rather number of running (active) goroutines. 
+By default, the locking happens inside of goroutine, i.e. **every call will be non-blocked**, but some goroutines may wait if semaphore locked. It means - technically it doesn't limit number of goroutines, but rather number of running (active) goroutines. 
 In order to block goroutines from even starting use `Preemptive` option (see below).
 
 ```go
