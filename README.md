@@ -35,7 +35,7 @@ In order to block goroutines from even starting use `Preemptive` option (see bel
 ```go
     swg := syncs.NewSizedGroup(5) // wait group with max size=5
      for i :=0; i<10; i++ {
-        swg.Go(fn func(ctx context.Context){
+        swg.Go(func(ctx context.Context){
             doThings(ctx) // only 5 of these will run in parallel
         })
     }
@@ -58,7 +58,7 @@ dropped under max. This way we not only limiting number of running goroutines bu
 ```go
     ewg := syncs.NewErrSizedGroup(5, syncs.Preemptive) // error wait group with max size=5, don't try to start more if any error happened
      for i :=0; i<10; i++ {
-        ewg.Go(fn func(ctx context.Context) error { // Go here could be blocked if trying to run >5 at the same time 
+        ewg.Go(func(ctx context.Context) error { // Go here could be blocked if trying to run >5 at the same time 
            err := doThings(ctx)     // only 5 of these will run in parallel
            return err
         })
