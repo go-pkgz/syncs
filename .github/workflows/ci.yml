@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: set up go 1.17
-        uses: actions/setup-go@v2
+      - name: set up go 1.20
+        uses: actions/setup-go@v3
         with:
-          go-version: 1.17
+          go-version: "1.20"
         id: go
 
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: build and test
         run: |
@@ -32,7 +32,7 @@ jobs:
 
       - name: install golangci-lint and goveralls
         run: |
-          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.45.0
+          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $GITHUB_WORKSPACE v1.50.1
           GO111MODULE=off go get -u -v github.com/mattn/goveralls
 
       - name: run linters
