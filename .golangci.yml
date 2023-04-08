@@ -33,7 +33,6 @@ linters:
     - revive
     - govet
     - unconvert
-    - megacheck
     - gas
     - misspell
     - unused
