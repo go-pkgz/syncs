@@ -15,7 +15,7 @@ type semaphore struct {
 }
 
 // NewSemaphore makes Semaphore with given capacity
-func NewSemaphore(capacity int) *semaphore {
+func NewSemaphore(capacity int) Locker {
 	if capacity <= 0 {
 		capacity = 1
 	}
