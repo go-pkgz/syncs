@@ -27,7 +27,6 @@ func NewSizedGroup(size int, opts ...GroupOption) *SizedGroup {
 // Go calls the given function in a new goroutine.
 // Every call will be unblocked, but some goroutines may wait if semaphore locked.
 func (g *SizedGroup) Go(fn func(ctx context.Context)) {
-
 	canceled := func() bool {
 		select {
 		case <-g.ctx.Done():
