@@ -12,7 +12,7 @@ import (
 type ErrSizedGroup struct {
 	options
 	wg   sync.WaitGroup
-	sema sync.Locker
+	sema Locker
 
 	err     *multierror
 	errLock sync.RWMutex
@@ -41,12 +41,18 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 // returned by Wait. If no termOnError all errors will be collected in multierror.
 func (g *ErrSizedGroup) Go(f func() error) {
 
-	g.wg.Add(1)
-
 	if g.preLock {
-		g.sema.Lock()
+		lockOk := g.sema.TryLock()
+		if !lockOk && g.discardIfFull {
+			// lock failed and discardIfFull is set, discard this goroutine
+			return
+		}
+		if !lockOk && !g.discardIfFull {
+			g.sema.Lock() // make sure we have block until lock is acquired
+		}
 	}
 
+	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
 

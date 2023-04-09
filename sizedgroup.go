@@ -11,7 +11,7 @@ import (
 type SizedGroup struct {
 	options
 	wg   sync.WaitGroup
-	sema sync.Locker
+	sema Locker
 }
 
 // NewSizedGroup makes wait group with limited size alive goroutines
@@ -41,12 +41,18 @@ func (g *SizedGroup) Go(fn func(ctx context.Context)) {
 		return
 	}
 
-	g.wg.Add(1)
-
 	if g.preLock {
-		g.sema.Lock()
+		lockOk := g.sema.TryLock()
+		if !lockOk && g.discardIfFull {
+			// lock failed and discardIfFull is set, discard this goroutine
+			return
+		}
+		if !lockOk && !g.discardIfFull {
+			g.sema.Lock() // make sure we have block until lock is acquired
+		}
 	}
 
+	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
 
