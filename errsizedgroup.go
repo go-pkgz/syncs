@@ -12,7 +12,7 @@ import (
 type ErrSizedGroup struct {
 	options
 	wg   sync.WaitGroup
-	sema sync.Locker
+	sema Locker
 
 	err     *multierror
 	errLock sync.RWMutex
@@ -23,7 +23,6 @@ type ErrSizedGroup struct {
 // By default all goroutines will be started but will wait inside. For limited number of goroutines use Preemptive() options.
 // TermOnErr will skip (won't start) all other goroutines if any error returned.
 func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
-
 	res := ErrSizedGroup{
 		sema: NewSemaphore(size),
 		err:  new(multierror),
@@ -40,11 +39,18 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 // The first call to return a non-nil error cancels the group if termOnError; its error will be
 // returned by Wait. If no termOnError all errors will be collected in multierror.
 func (g *ErrSizedGroup) Go(f func() error) {
-
 	g.wg.Add(1)
 
 	if g.preLock {
-		g.sema.Lock()
+		lockOk := g.sema.TryLock()
+		if !lockOk && g.discardIfFull {
+			// lock failed and discardIfFull is set, discard this goroutine
+			g.wg.Done()
+			return
+		}
+		if !lockOk && !g.discardIfFull {
+			g.sema.Lock() // make sure we have block until lock is acquired
+		}
 	}
 
 	go func() {
@@ -115,7 +121,7 @@ func (m *multierror) errorOrNil() error {
 	return m
 }
 
-// Error returns multierror string
+// Error returns multi-error string
 func (m *multierror) Error() string {
 	m.lock.Lock()
 	defer m.lock.Unlock()
