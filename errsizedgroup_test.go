@@ -67,31 +67,23 @@ func TestErrorSizedGroup_Preemptive(t *testing.T) {
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
 
-func TestErrorSizedGroup_PreemptiveWithDiscard(t *testing.T) {
-	ewg := NewErrSizedGroup(10, Preemptive, DiscardIfFull)
+func TestErrorSizedGroup_Discard(t *testing.T) {
+	ewg := NewErrSizedGroup(10, Discard)
 	var c uint32
 
 	for i := 0; i < 1000; i++ {
-		i := i
 		ewg.Go(func() error {
 			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
 			atomic.AddUint32(&c, 1)
-			if i == 100 {
-				return errors.New("err1")
-			}
-			if i == 200 {
-				return errors.New("err2")
-			}
-			time.Sleep(time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			return nil
 		})
 	}
 
 	assert.True(t, runtime.NumGoroutine() <= 20, "goroutines %d", runtime.NumGoroutine())
 	err := ewg.Wait()
-	assert.Equal(t, uint32(10), c, fmt.Sprintf("%d, not all routines have been executed.", c))
-	require.Error(t, err)
-	assert.True(t, strings.HasPrefix(err.Error(), "2 error(s) occurred:"))
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(10), c)
 }
 
 func TestErrorSizedGroup_NoError(t *testing.T) {

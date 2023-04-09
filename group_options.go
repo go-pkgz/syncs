@@ -30,7 +30,8 @@ func TermOnErr(o *options) {
 	o.termOnError = true
 }
 
-// DiscardIfFull will discard new goroutines if semaphore is full, i.e. no more goroutines allowed
-func DiscardIfFull(o *options) {
+// Discard will discard new goroutines if semaphore is full, i.e. no more goroutines allowed
+func Discard(o *options) {
 	o.discardIfFull = true
+	o.preLock = true // discard implies preemptive
 }

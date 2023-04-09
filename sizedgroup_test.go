@@ -27,8 +27,8 @@ func TestSizedGroup(t *testing.T) {
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }
 
-func TestSizedGroup_PreemptiveWithDiscard(t *testing.T) {
-	swg := NewSizedGroup(10, Preemptive, DiscardIfFull)
+func TestSizedGroup_Discard(t *testing.T) {
+	swg := NewSizedGroup(10, Preemptive, Discard)
 	var c uint32
 
 	for i := 0; i < 100; i++ {

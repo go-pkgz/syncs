@@ -41,10 +41,16 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 // returned by Wait. If no termOnError all errors will be collected in multierror.
 func (g *ErrSizedGroup) Go(f func() error) {
 
+	g.wg.Add(1)
+	// if g.preLock {
+	// 	g.sema.Lock()
+	// }
+
 	if g.preLock {
 		lockOk := g.sema.TryLock()
 		if !lockOk && g.discardIfFull {
 			// lock failed and discardIfFull is set, discard this goroutine
+			g.wg.Done()
 			return
 		}
 		if !lockOk && !g.discardIfFull {
@@ -52,7 +58,6 @@ func (g *ErrSizedGroup) Go(f func() error) {
 		}
 	}
 
-	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
 
