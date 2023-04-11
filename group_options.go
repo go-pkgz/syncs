@@ -3,11 +3,13 @@ package syncs
 import "context"
 
 type options struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	preLock       bool
-	termOnError   bool
-	discardIfFull bool
+	ctx            context.Context
+	cancel         context.CancelFunc
+	preLock        bool
+	termOnError    bool
+	discardIfFull  bool
+	waitQueue      int
+	notBlockCaller bool
 }
 
 // GroupOption functional option type
@@ -34,4 +36,15 @@ func TermOnErr(o *options) {
 func Discard(o *options) {
 	o.discardIfFull = true
 	o.preLock = true // discard implies preemptive
+}
+
+func NonBlocking(o *options) {
+	o.notBlockCaller = true
+}
+
+// WaitQueue size sets maximum amount of waiters that will block
+func WaitQueue(size int) GroupOption {
+	return func(o *options) {
+		o.waitQueue = size
+	}
 }

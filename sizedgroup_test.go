@@ -95,3 +95,60 @@ func ExampleSizedGroup_go() {
 
 	grp.Wait() // wait for completion
 }
+
+func TestSizedGroupWaiters(t *testing.T) {
+	swg := NewSizedGroup(10, Preemptive, WaitQueue(10))
+	var c uint32
+
+	timeNow := time.Now()
+
+	for i := 0; i < 300; i++ {
+		swg.Go(func(ctx context.Context) {
+			time.Sleep(5 * time.Millisecond)
+			atomic.AddUint32(&c, 1)
+		})
+	}
+	swg.Wait()
+	timeDiff := time.Now().Sub(timeNow)
+	assert.GreaterOrEqual(t, timeDiff, time.Millisecond*5*(300/10))
+	assert.Equal(t, uint32(300), c, fmt.Sprintf("%d, not all routines have been executed", c))
+}
+
+func TestSizedGroupWaiters_Discard(t *testing.T) {
+	swg := NewSizedGroup(10, Preemptive, Discard, WaitQueue(5), NonBlocking)
+	var c uint32
+
+	timeNow := time.Now()
+	for i := 0; i < 10; i++ {
+		newI := i
+		swg.Go(func(ctx context.Context) {
+			if newI < 5 {
+				time.Sleep(3 * time.Second)
+			} else {
+				time.Sleep(1 * time.Second)
+			}
+			atomic.AddUint32(&c, 1)
+		})
+	}
+	{
+		timeNow2 := time.Now()
+		for i := 0; i < 5; i++ {
+			swg.Go(func(ctx context.Context) {
+				time.Sleep(1 * time.Second)
+				atomic.AddUint32(&c, 1)
+			})
+		}
+		timeDiff := time.Now().Sub(timeNow2)
+		assert.True(t, timeDiff < time.Second+time.Millisecond*100)
+	}
+	for i := 0; i < 10; i++ {
+		swg.Go(func(ctx context.Context) {
+			panic("wrong logic")
+		})
+	}
+
+	swg.Wait()
+	timeDiff := time.Now().Sub(timeNow)
+	assert.True(t, (timeDiff > time.Second*3) && (timeDiff < time.Second*3+time.Millisecond*100))
+	assert.Equal(t, uint32(15), c, fmt.Sprintf("%d, not all routines have been executed", c))
+}

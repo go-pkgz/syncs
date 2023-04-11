@@ -10,8 +10,9 @@ import (
 // SizedGroup interface enforces constructor usage and doesn't allow direct creation of sizedGroup
 type SizedGroup struct {
 	options
-	wg   sync.WaitGroup
-	sema Locker
+	wg      sync.WaitGroup
+	sema    Locker
+	waiters *Locker
 }
 
 // NewSizedGroup makes wait group with limited size alive goroutines
@@ -20,6 +21,10 @@ func NewSizedGroup(size int, opts ...GroupOption) *SizedGroup {
 	res.options.ctx = context.Background()
 	for _, opt := range opts {
 		opt(&res.options)
+	}
+	if res.options.waitQueue != 0 {
+		var ptr = NewSemaphore(res.options.waitQueue)
+		res.waiters = &ptr
 	}
 	return &res
 }
@@ -40,20 +45,42 @@ func (g *SizedGroup) Go(fn func(ctx context.Context)) {
 		return
 	}
 
+	waitForWaiters := false
 	if g.preLock {
 		lockOk := g.sema.TryLock()
-		if !lockOk && g.discardIfFull {
-			// lock failed and discardIfFull is set, discard this goroutine
-			return
-		}
-		if !lockOk && !g.discardIfFull {
-			g.sema.Lock() // make sure we have block until lock is acquired
+		if !lockOk {
+			waiterOk := false
+			if g.waiters != nil {
+				waiterOk = (*g.waiters).TryLock()
+			}
+			if !waiterOk && g.discardIfFull {
+				// lock failed and discardIfFull is set, discard this goroutine
+				return
+			}
+			if !waiterOk && g.waiters != nil {
+				// wait for waiters and then for sema
+				(*g.waiters).Lock()
+			}
+			waitForWaiters = true
+			if !g.options.notBlockCaller {
+				g.sema.Lock() // make sure we have block until lock is acquired
+				if g.waiters != nil {
+					(*g.waiters).Unlock()
+				}
+			}
 		}
 	}
 
 	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
+
+		if waitForWaiters && g.preLock && g.options.notBlockCaller {
+			g.sema.Lock() // make sure we have block until lock is acquired
+			if g.waiters != nil {
+				(*g.waiters).Unlock()
+			}
+		}
 
 		if canceled() {
 			return
