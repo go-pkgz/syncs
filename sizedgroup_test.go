@@ -109,7 +109,7 @@ func TestSizedGroupWaiters(t *testing.T) {
 		})
 	}
 	swg.Wait()
-	timeDiff := time.Now().Sub(timeNow)
+	timeDiff := time.Since(timeNow)
 	assert.GreaterOrEqual(t, timeDiff, time.Millisecond*5*(300/10))
 	assert.Equal(t, uint32(300), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }
@@ -138,7 +138,7 @@ func TestSizedGroupWaiters_Discard(t *testing.T) {
 				atomic.AddUint32(&c, 1)
 			})
 		}
-		timeDiff := time.Now().Sub(timeNow2)
+		timeDiff := time.Since(timeNow2)
 		assert.True(t, timeDiff < time.Second+time.Millisecond*100)
 	}
 	for i := 0; i < 10; i++ {
@@ -148,7 +148,7 @@ func TestSizedGroupWaiters_Discard(t *testing.T) {
 	}
 
 	swg.Wait()
-	timeDiff := time.Now().Sub(timeNow)
+	timeDiff := time.Since(timeNow)
 	assert.True(t, (timeDiff > time.Second*3) && (timeDiff < time.Second*3+time.Millisecond*100))
 	assert.Equal(t, uint32(15), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }

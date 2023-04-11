@@ -38,6 +38,7 @@ func Discard(o *options) {
 	o.preLock = true // discard implies preemptive
 }
 
+// NonBlocking wait in caller or in goroutine
 func NonBlocking(o *options) {
 	o.notBlockCaller = true
 }
