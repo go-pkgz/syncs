@@ -114,6 +114,24 @@ func TestSizedGroupWaiters(t *testing.T) {
 	assert.Equal(t, uint32(300), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }
 
+func TestSizedGroupWaiters_NonBlocking(t *testing.T) {
+	swg := NewSizedGroup(10, NonBlocking, Preemptive, WaitQueue(10))
+	var c uint32
+
+	timeNow := time.Now()
+
+	for i := 0; i < 300; i++ {
+		swg.Go(func(ctx context.Context) {
+			time.Sleep(5 * time.Millisecond)
+			atomic.AddUint32(&c, 1)
+		})
+	}
+	swg.Wait()
+	timeDiff := time.Since(timeNow)
+	assert.GreaterOrEqual(t, timeDiff, time.Millisecond*5*(300/10))
+	assert.Equal(t, uint32(300), c, fmt.Sprintf("%d, not all routines have been executed", c))
+}
+
 func TestSizedGroupWaiters_Discard(t *testing.T) {
 	swg := NewSizedGroup(10, Preemptive, Discard, WaitQueue(5), NonBlocking)
 	var c uint32
