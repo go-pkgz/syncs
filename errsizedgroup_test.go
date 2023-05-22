@@ -152,3 +152,36 @@ func ExampleErrSizedGroup_go() {
 		panic(err)
 	}
 }
+
+func TestErrorSizedGroup_TermAndPreemptive(t *testing.T) {
+	ewg := NewErrSizedGroup(10, TermOnErr, Preemptive)
+	var c uint32
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 1000; i++ {
+			i := i
+			ewg.Go(func() error {
+				time.Sleep(10 * time.Millisecond)
+				atomic.AddUint32(&c, 1)
+				if i == 100 {
+					return errors.New("err")
+				}
+				return nil
+			})
+		}
+
+		err := ewg.Wait()
+		assert.NotNil(t, err)
+		assert.Equal(t, "1 error(s) occurred: [0] {err}", err.Error())
+		assert.True(t, c < uint32(1000), fmt.Sprintf("%d, some of routines has to be terminated early", c))
+
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout deadlock may happy")
+	case <-done:
+	}
+}

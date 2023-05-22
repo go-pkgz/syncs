@@ -66,6 +66,8 @@ func (g *ErrSizedGroup) Go(f func() error) {
 			return g.err.errorOrNil() != nil
 		}
 
+		defer g.sema.Unlock()
+
 		if terminated() {
 			return // terminated due prev error, don't run anything in this group anymore
 		}
@@ -86,7 +88,6 @@ func (g *ErrSizedGroup) Go(f func() error) {
 				}
 			})
 		}
-		g.sema.Unlock()
 	}()
 }
 
