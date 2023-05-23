@@ -232,6 +232,7 @@ func TestErrorSizedGroup_MultiError(t *testing.T) {
 
 func TestErrorSizedGroup_Cancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	ewg := NewErrSizedGroup(10, Context(ctx))
 
 	var c uint32
@@ -259,6 +260,7 @@ func TestErrorSizedGroup_Cancel(t *testing.T) {
 
 func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	ewg := NewErrSizedGroup(10, Context(ctx), Preemptive)
 
 	var c uint32
