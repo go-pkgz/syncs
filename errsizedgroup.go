@@ -20,7 +20,8 @@ type ErrSizedGroup struct {
 }
 
 // NewErrSizedGroup makes wait group with limited size alive goroutines.
-// By default all goroutines will be started but will wait inside. For limited number of goroutines use Preemptive() options.
+// By default, all goroutines will be started but will wait inside.
+// For limited number of goroutines use Preemptive() options.
 // TermOnErr will skip (won't start) all other goroutines if any error returned.
 func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 	res := ErrSizedGroup{
@@ -39,6 +40,27 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 // The first call to return a non-nil error cancels the group if termOnError; its error will be
 // returned by Wait. If no termOnError all errors will be collected in multierror.
 func (g *ErrSizedGroup) Go(f func() error) {
+
+	canceled := func() bool {
+		if g.ctx == nil {
+			return false
+		}
+		select {
+		case <-g.ctx.Done():
+			return true
+		default:
+			return false
+		}
+	}
+
+	if canceled() {
+		g.errOnce.Do(func() {
+			// don't repeat this error
+			g.err.append(g.ctx.Err())
+		})
+		return
+	}
+
 	g.wg.Add(1)
 
 	isLocked := false
@@ -87,16 +109,9 @@ func (g *ErrSizedGroup) Go(f func() error) {
 		}
 
 		if err := f(); err != nil {
-
 			g.errLock.Lock()
 			g.err = g.err.append(err)
 			g.errLock.Unlock()
-
-			g.errOnce.Do(func() { // call context cancel once
-				if g.cancel != nil {
-					g.cancel()
-				}
-			})
 		}
 	}()
 }
@@ -105,9 +120,6 @@ func (g *ErrSizedGroup) Go(f func() error) {
 // returns all errors (if any) wrapped with multierror from them.
 func (g *ErrSizedGroup) Wait() error {
 	g.wg.Wait()
-	if g.cancel != nil {
-		g.cancel()
-	}
 	return g.err.errorOrNil()
 }
 
