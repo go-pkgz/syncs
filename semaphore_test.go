@@ -10,24 +10,78 @@ import (
 )
 
 func TestSemaphore(t *testing.T) {
-	var locks int32
-	var sema sync.Locker
-	go func() {
-		sema = NewSemaphore(3)
-		sema.Lock()
-		atomic.AddInt32(&locks, 1)
-		sema.Lock()
-		atomic.AddInt32(&locks, 1)
-		sema.Lock()
-		atomic.AddInt32(&locks, 1)
-		sema.Lock()
-		atomic.AddInt32(&locks, 1)
-	}()
+	tbl := []struct {
+		name        string
+		capacity    int
+		lockTimes   int
+		expectedErr bool
+	}{
+		{"ZeroCapacity", 0, 0, false},
+		{"CapacityOne", 1, 1, false},
+		{"CapacityTwo", 2, 2, false},
+		{"ExceedCapacity", 2, 3, true},
+	}
 
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, int32(3), atomic.LoadInt32(&locks), "3 locks ok, hangs on 4th")
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			var locks int32
+			sema := NewSemaphore(tt.capacity)
 
-	sema.Unlock()
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, int32(4), atomic.LoadInt32(&locks), "4 locks should happen")
+			wg := sync.WaitGroup{}
+			wg.Add(tt.lockTimes)
+			for i := 0; i < tt.lockTimes; i++ {
+				go func() {
+					sema.Lock()
+					atomic.AddInt32(&locks, 1)
+					wg.Done()
+				}()
+			}
+
+			time.Sleep(10 * time.Millisecond) // wait a little for locks to acquire
+
+			// if number of locks are less than capacity, all should be acquired
+			if tt.lockTimes <= tt.capacity {
+				assert.Equal(t, int32(tt.lockTimes), atomic.LoadInt32(&locks))
+				wg.Wait()
+				return
+			}
+			// if number of locks exceed capacity, it should hang after reaching the capacity
+			assert.Equal(t, int32(tt.capacity), atomic.LoadInt32(&locks))
+			sema.Unlock()
+			time.Sleep(10 * time.Millisecond)
+			// after unlock, it should be able to acquire another lock
+			assert.Equal(t, int32(tt.capacity+1), atomic.LoadInt32(&locks))
+			wg.Wait()
+		})
+	}
+}
+
+func TestSemaphore_TryLock(t *testing.T) {
+	tbl := []struct {
+		name          string
+		capacity      int
+		lockTimes     int
+		expectedLocks int
+	}{
+		{"ZeroCapacity", 0, 1, 1},
+		{"CapacityOne", 1, 1, 1},
+		{"CapacityTwo", 2, 2, 2},
+		{"ExceedCapacity", 2, 3, 2},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			var locks int32
+			sema := NewSemaphore(tt.capacity)
+
+			for i := 0; i < tt.lockTimes; i++ {
+				if sema.TryLock() {
+					atomic.AddInt32(&locks, 1)
+				}
+			}
+
+			// Check the acquired locks, it should not exceed capacity.
+			assert.Equal(t, int32(tt.expectedLocks), atomic.LoadInt32(&locks))
+		})
+	}
 }
