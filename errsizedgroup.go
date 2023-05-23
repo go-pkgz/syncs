@@ -41,8 +41,12 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 func (g *ErrSizedGroup) Go(f func() error) {
 	g.wg.Add(1)
 
+	isLocked := false
 	if g.preLock {
 		lockOk := g.sema.TryLock()
+		if lockOk {
+			isLocked = true
+		}
 		if !lockOk && g.discardIfFull {
 			// lock failed and discardIfFull is set, discard this goroutine
 			g.wg.Done()
@@ -50,6 +54,7 @@ func (g *ErrSizedGroup) Go(f func() error) {
 		}
 		if !lockOk && !g.discardIfFull {
 			g.sema.Lock() // make sure we have block until lock is acquired
+			isLocked = true
 		}
 	}
 
@@ -66,7 +71,11 @@ func (g *ErrSizedGroup) Go(f func() error) {
 			return g.err.errorOrNil() != nil
 		}
 
-		defer g.sema.Unlock()
+		defer func() {
+			if isLocked {
+				g.sema.Unlock()
+			}
+		}()
 
 		if terminated() {
 			return // terminated due prev error, don't run anything in this group anymore
@@ -74,6 +83,7 @@ func (g *ErrSizedGroup) Go(f func() error) {
 
 		if !g.preLock {
 			g.sema.Lock()
+			isLocked = true
 		}
 
 		if err := f(); err != nil {
