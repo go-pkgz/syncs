@@ -228,6 +228,10 @@ func TestErrorSizedGroup_MultiError(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		assert.Contains(t, err.Error(), fmt.Sprintf("error from goroutine %d", i))
 	}
+
+	var merr *MultiError
+	assert.True(t, errors.As(err, &merr))
+	assert.Len(t, merr.Errors(), 10)
 }
 
 func TestErrorSizedGroup_Cancel(t *testing.T) {
