@@ -162,6 +162,7 @@ func (m *MultiError) Error() string {
 	return fmt.Sprintf("%d error(s) occurred: %s", len(m.errors), strings.Join(errs, ", "))
 }
 
+// Errors returns all errors collected
 func (m *MultiError) Errors() []error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
