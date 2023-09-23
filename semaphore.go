@@ -8,7 +8,7 @@ type Locker interface {
 	TryLock() bool
 }
 
-// Semaphore implementation, counted lock only. Implements sync.Locker interface, thread safe.
+// Semaphore implementation, counted lock only. Implements Locker interface, thread safe.
 type semaphore struct {
 	ch chan struct{}
 }
