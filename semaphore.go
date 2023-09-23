@@ -10,7 +10,6 @@ type Locker interface {
 
 // Semaphore implementation, counted lock only. Implements sync.Locker interface, thread safe.
 type semaphore struct {
-	Locker
 	ch chan struct{}
 }
 
