@@ -21,7 +21,7 @@ func TestErrorSizedGroup(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		i := i
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			time.Sleep(time.Millisecond * 10)
 			atomic.AddUint32(&c, 1)
 			if i == 100 {
@@ -47,7 +47,7 @@ func TestErrorSizedGroup_Preemptive(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		i := i
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
 			atomic.AddUint32(&c, 1)
 			if i == 10 {
@@ -73,7 +73,7 @@ func TestErrorSizedGroup_Discard(t *testing.T) {
 	var c uint32
 
 	for i := 0; i < 1000; i++ {
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
 			atomic.AddUint32(&c, 1)
 			time.Sleep(10 * time.Millisecond)
@@ -92,7 +92,7 @@ func TestErrorSizedGroup_NoError(t *testing.T) {
 	var c uint32
 
 	for i := 0; i < 1000; i++ {
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			atomic.AddUint32(&c, 1)
 			return nil
 		})
@@ -109,7 +109,7 @@ func TestErrorSizedGroup_Term(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		i := i
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			atomic.AddUint32(&c, 1)
 			if i == 100 {
 				return errors.New("err")
@@ -133,7 +133,7 @@ func TestErrorSizedGroup_TermOnErr(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		i := i
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			val := atomic.AddUint32(&c, 1)
 			if i == errIndex || val > uint32(errIndex+1) {
 				return fmt.Errorf("err from function %d", i)
@@ -163,7 +163,7 @@ func TestErrorSizedGroup_TermAndPreemptive(t *testing.T) {
 	go func() {
 		for i := 0; i < 1000; i++ {
 			i := i
-			ewg.Go(func() error {
+			ewg.Go(func(ctx context.Context) error {
 				time.Sleep(10 * time.Millisecond)
 				atomic.AddUint32(&c, 1)
 				if i == 100 {
@@ -194,7 +194,7 @@ func TestErrorSizedGroup_ConcurrencyLimit(t *testing.T) {
 	ewg := NewErrSizedGroup(5) // Limit of concurrent goroutines set to 5
 
 	for i := 0; i < 100; i++ {
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			atomic.AddInt32(&concurrentGoroutines, 1)
 			defer atomic.AddInt32(&concurrentGoroutines, -1)
 
@@ -217,7 +217,7 @@ func TestErrorSizedGroup_MultiError(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		i := i
-		ewg.Go(func() error {
+		ewg.Go(func(ctx context.Context) error {
 			return fmt.Errorf("error from goroutine %d", i)
 		})
 	}
@@ -243,14 +243,19 @@ func TestErrorSizedGroup_Cancel(t *testing.T) {
 	const N = 1000
 
 	for i := 0; i < N; i++ {
-		i := i
+		if i == 100 {
+			cancel()
+		}
 		time.Sleep(1 * time.Millisecond) // prevent all the goroutines to be started at once
-		ewg.Go(func() error {
-			atomic.AddUint32(&c, 1)
-			if i == 100 {
-				cancel()
+		ewg.Go(func(ctx context.Context) error {
+			timer := time.NewTimer(1 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C: // simulate some work
 			}
-			time.Sleep(1 * time.Millisecond) // simulate some work
+			atomic.AddUint32(&c, 1)
 			return nil
 		})
 	}
@@ -271,13 +276,18 @@ func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
 	const N = 1000
 
 	for i := 0; i < N; i++ {
-		i := i
-		ewg.Go(func() error {
-			atomic.AddUint32(&c, 1)
-			if i == 100 {
-				cancel()
+		if i == 100 {
+			cancel()
+		}
+		ewg.Go(func(ctx context.Context) error {
+			timer := time.NewTimer(1 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C: // simulate some work
 			}
-			time.Sleep(1 * time.Millisecond) // simulate some work
+			atomic.AddUint32(&c, 1)
 			return nil
 		})
 	}
@@ -298,7 +308,7 @@ func ExampleErrSizedGroup_go() {
 	var c uint32
 	for i := 0; i < 1000; i++ {
 		// Go call is non-blocking, like regular go statement
-		grp.Go(func() error {
+		grp.Go(func(ctx context.Context) error {
 			// do some work in 10 goroutines in parallel
 			atomic.AddUint32(&c, 1)
 			time.Sleep(10 * time.Millisecond)
