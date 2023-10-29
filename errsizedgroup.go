@@ -3,7 +3,6 @@ package syncs
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 )
 
@@ -64,7 +63,7 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 // The first call to return a non-nil error cancels the group if termOnError; its error will be
 // returned by Wait. If no termOnError all errors will be collected in multierror.
 func (g *ErrSizedGroup) Go(f func(ctx context.Context) error) {
-	if g.canceled() && (!g.termOnError || len(g.err.Errors()) == 0) {
+	if g.canceled() && (!g.termOnError || g.err.len() == 0) {
 		g.errOnce.Do(func() {
 			// don't repeat this error
 			g.err.append(g.ctx.Err())
@@ -120,27 +119,20 @@ func (g *ErrSizedGroup) Go(f func(ctx context.Context) error) {
 // returns all errors (if any) wrapped with multierror from them.
 func (g *ErrSizedGroup) Wait() error {
 	g.wg.Wait()
+	g.err.makeStr()
 	return g.err.ErrorOrNil()
 }
 
 // MultiError is a thread safe container for multi-error type that implements error interface
 type MultiError struct {
 	errors []error
-	lock   sync.Mutex
-}
-
-func (m *MultiError) append(err error) *MultiError {
-	m.lock.Lock()
-	m.errors = append(m.errors, err)
-	m.lock.Unlock()
-	return m
+	lock   sync.RWMutex
+	str    string
 }
 
 // ErrorOrNil returns nil if no errors or multierror if errors occurred
 func (m *MultiError) ErrorOrNil() error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	if len(m.errors) == 0 {
+	if m.len() == 0 {
 		return nil
 	}
 	return m
@@ -148,23 +140,36 @@ func (m *MultiError) ErrorOrNil() error {
 
 // Error returns multi-error string
 func (m *MultiError) Error() string {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	if len(m.errors) == 0 {
-		return ""
-	}
-
-	errs := []string{}
-
-	for n, e := range m.errors {
-		errs = append(errs, fmt.Sprintf("[%d] {%s}", n, e.Error()))
-	}
-	return fmt.Sprintf("%d error(s) occurred: %s", len(m.errors), strings.Join(errs, ", "))
+	return m.str
 }
 
 // Errors returns all errors collected
 func (m *MultiError) Errors() []error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
 	return m.errors
+}
+
+func (m *MultiError) append(err error) {
+	m.lock.Lock()
+	m.errors = append(m.errors, err)
+	m.lock.Unlock()
+}
+
+func (m *MultiError) len() int {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	return len(m.errors)
+}
+
+func (m *MultiError) makeStr() {
+	lenErrors := m.len()
+	if lenErrors == 0 {
+		return
+	}
+	errs := fmt.Sprintf("[0] {%s}", m.Errors()[0].Error())
+	if lenErrors > 1 {
+		for n, e := range m.Errors()[1:] {
+			errs += fmt.Sprintf(", [%d] {%s}", n+1, e.Error())
+		}
+	}
+	m.str = fmt.Sprintf("%d error(s) occurred: %s", lenErrors, errs)
 }

@@ -299,6 +299,39 @@ func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
 	require.LessOrEqual(t, c, uint32(110), "some of goroutines has to be terminated early")
 }
 
+func TestErrorSizedGroup_CancelWithMultiError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ewg := NewErrSizedGroup(10, Context(ctx))
+
+	ewg.Go(func(ctx context.Context) error {
+		return errors.New("first error")
+	})
+	for i := 0; i < 100; i++ {
+		if i == 10 {
+			cancel()
+		}
+		time.Sleep(1 * time.Millisecond) // prevent all the goroutines to be started at once
+		ewg.Go(func(ctx context.Context) error {
+			timer := time.NewTimer(1 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C: // simulate some work
+			}
+			return nil
+		})
+	}
+
+	err := ewg.Wait()
+	assert.NotNil(t, err)
+	var merr *MultiError
+	assert.True(t, errors.As(err, &merr))
+	assert.Len(t, merr.Errors(), 2)
+	require.EqualError(t, err, "2 error(s) occurred: [0] {first error}, [1] {context canceled}")
+}
+
 // illustrates the use of a SizedGroup for concurrent, limited execution of goroutines.
 func ExampleErrSizedGroup_go() {
 
