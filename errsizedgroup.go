@@ -1,6 +1,8 @@
 package syncs
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,9 +16,12 @@ type ErrSizedGroup struct {
 	wg   sync.WaitGroup
 	sema Locker
 
-	err     *MultiError
-	errLock sync.RWMutex
-	errOnce sync.Once
+	canceled   func() bool
+	terminated func() bool
+	termCancel func()
+
+	err   *MultiError
+	errCh chan error
 }
 
 // NewErrSizedGroup makes wait group with limited size alive goroutines.
@@ -25,13 +30,45 @@ type ErrSizedGroup struct {
 // TermOnErr will skip (won't start) all other goroutines if any error returned.
 func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 	res := ErrSizedGroup{
-		sema: NewSemaphore(size),
-		err:  new(MultiError),
+		sema:       NewSemaphore(size),
+		err:        new(MultiError),
+		errCh:      make(chan error, size),
+		terminated: func() bool { return false },
 	}
 
 	for _, opt := range options {
 		opt(&res.options)
 	}
+	if res.ctx == nil {
+		res.ctx = context.Background()
+	}
+
+	res.canceled = func() bool {
+		select {
+		case <-res.ctx.Done():
+			return true
+		default:
+			return false
+		}
+	}
+	if res.termOnError {
+		res.terminated = func() bool { // terminated will be true if any error happened before
+			return !res.err.isEmpty() || len(res.errCh) != 0
+		}
+		res.ctx, res.termCancel = context.WithCancel(res.ctx)
+	}
+
+	go func() {
+		var ctxError bool
+		for err := range res.errCh {
+			if !ctxError {
+				res.err.append(err)
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					ctxError = true // don't repeat this error
+				}
+			}
+		}
+	}()
 
 	return &res
 }
@@ -39,31 +76,16 @@ func NewErrSizedGroup(size int, options ...GroupOption) *ErrSizedGroup {
 // Go calls the given function in a new goroutine.
 // The first call to return a non-nil error cancels the group if termOnError; its error will be
 // returned by Wait. If no termOnError all errors will be collected in multierror.
-func (g *ErrSizedGroup) Go(f func() error) {
-
-	canceled := func() bool {
-		if g.ctx == nil {
-			return false
+func (g *ErrSizedGroup) Go(f func(ctx context.Context) error) {
+	if g.canceled() {
+		if !g.terminated() {
+			g.errCh <- g.ctx.Err()
 		}
-		select {
-		case <-g.ctx.Done():
-			return true
-		default:
-			return false
-		}
-	}
-
-	if canceled() {
-		g.errOnce.Do(func() {
-			// don't repeat this error
-			g.err.append(g.ctx.Err())
-		})
 		return
 	}
 
 	g.wg.Add(1)
-
-	isLocked := false
+	var isLocked bool
 	if g.preLock {
 		lockOk := g.sema.TryLock()
 		if lockOk {
@@ -82,24 +104,16 @@ func (g *ErrSizedGroup) Go(f func() error) {
 
 	go func() {
 		defer g.wg.Done()
-
-		// terminated will be true if any error happened before and g.termOnError
-		terminated := func() bool {
-			if !g.termOnError {
-				return false
-			}
-			g.errLock.RLock()
-			defer g.errLock.RUnlock()
-			return g.err.ErrorOrNil() != nil
-		}
-
 		defer func() {
 			if isLocked {
 				g.sema.Unlock()
 			}
 		}()
 
-		if terminated() {
+		if g.terminated() {
+			if !g.canceled() {
+				g.termCancel()
+			}
 			return // terminated due prev error, don't run anything in this group anymore
 		}
 
@@ -108,10 +122,10 @@ func (g *ErrSizedGroup) Go(f func() error) {
 			isLocked = true
 		}
 
-		if err := f(); err != nil {
-			g.errLock.Lock()
-			g.err = g.err.append(err)
-			g.errLock.Unlock()
+		if !g.canceled() && !g.terminated() {
+			if err := f(g.ctx); err != nil {
+				g.errCh <- err
+			}
 		}
 	}()
 }
@@ -120,51 +134,58 @@ func (g *ErrSizedGroup) Go(f func() error) {
 // returns all errors (if any) wrapped with multierror from them.
 func (g *ErrSizedGroup) Wait() error {
 	g.wg.Wait()
+	close(g.errCh)
 	return g.err.ErrorOrNil()
 }
 
 // MultiError is a thread safe container for multi-error type that implements error interface
 type MultiError struct {
 	errors []error
-	lock   sync.Mutex
-}
-
-func (m *MultiError) append(err error) *MultiError {
-	m.lock.Lock()
-	m.errors = append(m.errors, err)
-	m.lock.Unlock()
-	return m
+	lock   sync.RWMutex
+	str    string
 }
 
 // ErrorOrNil returns nil if no errors or multierror if errors occurred
 func (m *MultiError) ErrorOrNil() error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	if len(m.errors) == 0 {
+	if m.isEmpty() {
 		return nil
 	}
+	m.makeStr()
 	return m
 }
 
 // Error returns multi-error string
 func (m *MultiError) Error() string {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	if len(m.errors) == 0 {
-		return ""
-	}
-
-	errs := []string{}
-
-	for n, e := range m.errors {
-		errs = append(errs, fmt.Sprintf("[%d] {%s}", n, e.Error()))
-	}
-	return fmt.Sprintf("%d error(s) occurred: %s", len(m.errors), strings.Join(errs, ", "))
+	return m.str
 }
 
 // Errors returns all errors collected
 func (m *MultiError) Errors() []error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
 	return m.errors
+}
+
+func (m *MultiError) append(err error) {
+	m.lock.Lock()
+	m.errors = append(m.errors, err)
+	m.lock.Unlock()
+}
+
+func (m *MultiError) isEmpty() bool {
+	return m.len() == 0
+}
+
+func (m *MultiError) len() int {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	return len(m.errors)
+}
+
+func (m *MultiError) makeStr() {
+	lenErrors := m.len()
+	m.str = fmt.Sprintf("%d error(s) occurred: ", lenErrors)
+	errs := make([]string, lenErrors)
+	for i := range m.errors {
+		errs[i] = fmt.Sprintf("[%d] {%s}", i, m.errors[i])
+	}
+	m.str += strings.Join(errs, ", ")
 }

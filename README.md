@@ -70,9 +70,11 @@ It can work as a regular errgrp.Group or with early termination. It is thread-sa
 
 
 ```go
-	ewg := syncs.NewErrSizedGroup(5, syncs.Preemptive) // error wait group with max size=5, don't try to start more if any error happened
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ewg := syncs.NewErrSizedGroup(5, syncs.Preemptive, syncs.Context(ctx)) // error wait group with max size=5, don't try to start more if any error happened
 	for i :=0; i<10; i++ {
-		ewg.Go(func(ctx context.Context) error { // Go here could be blocked if trying to run >5 at the same time 
+		ewg.Go(func(ctx context.Context) error { // Go here could be blocked if trying to run >5 at the same time
 			err := doThings(ctx)     // only 5 of these will run in parallel
 			return err
 		})
