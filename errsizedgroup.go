@@ -3,6 +3,7 @@ package syncs
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -119,7 +120,6 @@ func (g *ErrSizedGroup) Go(f func(ctx context.Context) error) {
 // returns all errors (if any) wrapped with multierror from them.
 func (g *ErrSizedGroup) Wait() error {
 	g.wg.Wait()
-	g.err.makeStr()
 	return g.err.ErrorOrNil()
 }
 
@@ -135,6 +135,7 @@ func (m *MultiError) ErrorOrNil() error {
 	if m.len() == 0 {
 		return nil
 	}
+	m.makeStr()
 	return m
 }
 
@@ -161,15 +162,11 @@ func (m *MultiError) len() int {
 }
 
 func (m *MultiError) makeStr() {
-	lenErrors := m.len()
-	if lenErrors == 0 {
-		return
+	lenErrors := len(m.errors)
+	m.str = fmt.Sprintf("%d error(s) occurred: ", lenErrors)
+	errs := make([]string, lenErrors)
+	for i := range m.errors {
+		errs[i] = fmt.Sprintf("[%d] {%s}", i, m.errors[i])
 	}
-	errs := fmt.Sprintf("[0] {%s}", m.Errors()[0].Error())
-	if lenErrors > 1 {
-		for n, e := range m.Errors()[1:] {
-			errs += fmt.Sprintf(", [%d] {%s}", n+1, e.Error())
-		}
-	}
-	m.str = fmt.Sprintf("%d error(s) occurred: %s", lenErrors, errs)
+	m.str += strings.Join(errs, ", ")
 }
