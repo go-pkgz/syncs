@@ -41,16 +41,16 @@ func TestSemaphore(t *testing.T) {
 
 			// if number of locks are less than capacity, all should be acquired
 			if tt.lockTimes <= tt.capacity {
-				assert.Equal(t, int32(tt.lockTimes), atomic.LoadInt32(&locks))
+				assert.Equal(t, tt.lockTimes, int(atomic.LoadInt32(&locks)))
 				wg.Wait()
 				return
 			}
 			// if number of locks exceed capacity, it should hang after reaching the capacity
-			assert.Equal(t, int32(tt.capacity), atomic.LoadInt32(&locks))
+			assert.Equal(t, tt.capacity, int(atomic.LoadInt32(&locks)))
 			sema.Unlock()
 			time.Sleep(10 * time.Millisecond)
 			// after unlock, it should be able to acquire another lock
-			assert.Equal(t, int32(tt.capacity+1), atomic.LoadInt32(&locks))
+			assert.Equal(t, tt.capacity+1, int(atomic.LoadInt32(&locks)))
 			wg.Wait()
 		})
 	}
@@ -81,7 +81,7 @@ func TestSemaphore_TryLock(t *testing.T) {
 			}
 
 			// Check the acquired locks, it should not exceed capacity.
-			assert.Equal(t, int32(tt.expectedLocks), atomic.LoadInt32(&locks))
+			assert.Equal(t, tt.expectedLocks, int(atomic.LoadInt32(&locks)))
 		})
 	}
 }

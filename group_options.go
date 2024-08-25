@@ -3,11 +3,11 @@ package syncs
 import "context"
 
 type options struct {
-	ctx             context.Context
-	preLock         bool
-	termOnError     bool
-	discardIfFull   bool
-	tresholdDiscard int
+	ctx           context.Context
+	preLock       bool
+	termOnError   bool
+	discardIfFull bool
+	tresholdSize  int
 }
 
 // GroupOption functional option type
@@ -36,18 +36,17 @@ func Discard(o *options) {
 	o.preLock = true // discard implies preemptive
 }
 
-// DiscardAfterTreshold works similarly to Discard, but buffers task until buffer treshold reach
-// For example, if 10 gouroutines are allowed and bufferTreshold is equal to 5, then 10 tasks
-// can run simultaneously in gouroutines and 5 tasks can be kept in buffer until gouroutines become
-// available.
-func DiscardAfterTreshold(bufferSize int) GroupOption {
+// DiscardAfterTreshold works similarly to Discard, but buffers tasks if all goroutines are busy
+// until the treshold size of 'active' tasks (i.e. executing and scheduled for execution) is achieved
+// If this value is lower than size, it will be ignored and common Discard mode will is used
+func DiscardAfterTreshold(tresholdSize int) GroupOption {
 	return func(o *options) {
 		o.discardIfFull = true
 		o.preLock = true
 
-		if bufferSize < 1 {
-			bufferSize = 0
+		if tresholdSize < 1 {
+			tresholdSize = 0
 		}
-		o.tresholdDiscard = bufferSize
+		o.tresholdSize = tresholdSize
 	}
 }

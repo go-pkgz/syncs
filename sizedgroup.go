@@ -30,8 +30,8 @@ func NewSizedGroup(size int, opts ...GroupOption) *SizedGroup {
 
 	// queue size either equal to number of workers or larger, otherwise does not make sense
 	queueSize := size
-	if res.tresholdDiscard > 0 {
-		queueSize += res.tresholdDiscard
+	if res.tresholdSize > size {
+		queueSize = res.tresholdSize
 	}
 
 	res.jobQueue = make(chan func(ctx context.Context), queueSize)
