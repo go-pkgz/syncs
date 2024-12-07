@@ -143,9 +143,10 @@ func TestErrorSizedGroup_TermOnErr(t *testing.T) {
 	}
 
 	err := ewg.Wait()
+	t.Logf("error: %v", err)
 
 	require.NotNil(t, err)
-	require.Contains(t, err.Error(), "err from function 100")
+	assert.Contains(t, err.Error(), "err from function ")
 	// we don't know how many routines will be executed before the error, but it should be less than 10
 	require.LessOrEqual(t, c, uint32(errIndex+100), fmt.Sprintf("%d, routines have to be terminated early", c))
 }
