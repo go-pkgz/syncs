@@ -10,66 +10,123 @@ import (
 // SizedGroup interface enforces constructor usage and doesn't allow direct creation of sizedGroup
 type SizedGroup struct {
 	options
-	wg   sync.WaitGroup
-	sema Locker
+	wg            sync.WaitGroup
+	workers       chan struct{}
+	scheduledJobs chan struct{}
+	jobQueue      chan func(ctx context.Context)
+	workersMutex  sync.Mutex
 }
 
 // NewSizedGroup makes wait group with limited size alive goroutines
 func NewSizedGroup(size int, opts ...GroupOption) *SizedGroup {
-	res := SizedGroup{sema: NewSemaphore(size)}
+	if size < 1 {
+		size = 1
+	}
+	res := SizedGroup{workers: make(chan struct{}, size)}
 	res.options.ctx = context.Background()
 	for _, opt := range opts {
 		opt(&res.options)
 	}
+
+	// queue size either equal to number of workers or larger, otherwise does not make sense
+	queueSize := size
+	if res.tresholdSize > size {
+		queueSize = res.tresholdSize
+	}
+
+	res.jobQueue = make(chan func(ctx context.Context), queueSize)
+	res.scheduledJobs = make(chan struct{}, queueSize)
 	return &res
 }
 
 // Go calls the given function in a new goroutine.
 // Every call will be unblocked, but some goroutines may wait if semaphore locked.
 func (g *SizedGroup) Go(fn func(ctx context.Context)) {
-	canceled := func() bool {
-		select {
-		case <-g.ctx.Done():
-			return true
-		default:
-			return false
-		}
-	}
-
-	if canceled() {
+	if g.canceled() {
 		return
 	}
 
-	if g.preLock {
-		lockOk := g.sema.TryLock()
-		if !lockOk && g.discardIfFull {
-			// lock failed and discardIfFull is set, discard this goroutine
+	g.wg.Add(1)
+	if !g.preLock {
+		go func() {
+			defer g.wg.Done()
+			if g.canceled() {
+				return
+			}
+			g.scheduledJobs <- struct{}{}
+			fn(g.ctx)
+			<-g.scheduledJobs
+		}()
+		return
+	}
+
+	toRun := func(job func(ctx context.Context)) {
+		defer g.wg.Done()
+		if g.canceled() {
 			return
 		}
-		if !lockOk && !g.discardIfFull {
-			g.sema.Lock() // make sure we have block until lock is acquired
+		job(g.ctx)
+		<-g.scheduledJobs
+	}
+
+	startWorkerIfNeeded := func() {
+		g.workersMutex.Lock()
+		select {
+		case g.workers <- struct{}{}:
+			g.workersMutex.Unlock()
+			go func() {
+				for {
+					select {
+					case job := <-g.jobQueue:
+						toRun(job)
+					default:
+						g.workersMutex.Lock()
+						select {
+						case job := <-g.jobQueue:
+							g.workersMutex.Unlock()
+							toRun(job)
+							continue
+						default:
+							<-g.workers
+							g.workersMutex.Unlock()
+						}
+						return
+					}
+				}
+			}()
+		default:
+			g.workersMutex.Unlock()
 		}
 	}
 
-	g.wg.Add(1)
-	go func() {
-		defer g.wg.Done()
-
-		if canceled() {
-			return
+	if g.discardIfFull {
+		select {
+		case g.scheduledJobs <- struct{}{}:
+			g.jobQueue <- fn
+			startWorkerIfNeeded()
+		default:
+			g.wg.Done()
 		}
 
-		if !g.preLock {
-			g.sema.Lock()
-		}
+		return
+	}
 
-		fn(g.ctx)
-		g.sema.Unlock()
-	}()
+	g.scheduledJobs <- struct{}{}
+	g.jobQueue <- fn
+	startWorkerIfNeeded()
 }
 
 // Wait blocks until the SizedGroup counter is zero.
 // See sync.WaitGroup documentation for more information.
 func (g *SizedGroup) Wait() {
 	g.wg.Wait()
+}
+
+func (g *SizedGroup) canceled() bool {
+	select {
+	case <-g.ctx.Done():
+		return true
+	default:
+		return false
+	}
 }
