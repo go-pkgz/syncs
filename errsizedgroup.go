@@ -15,7 +15,6 @@ type ErrSizedGroup struct {
 	sema Locker
 
 	err     *MultiError
-	errLock sync.RWMutex
 	errOnce sync.Once
 }
 
@@ -88,8 +87,6 @@ func (g *ErrSizedGroup) Go(f func() error) {
 			if !g.termOnError {
 				return false
 			}
-			g.errLock.RLock()
-			defer g.errLock.RUnlock()
 			return g.err.ErrorOrNil() != nil
 		}
 
@@ -109,9 +106,7 @@ func (g *ErrSizedGroup) Go(f func() error) {
 		}
 
 		if err := f(); err != nil {
-			g.errLock.Lock()
-			g.err = g.err.append(err)
-			g.errLock.Unlock()
+			g.err.append(err)
 		}
 	}()
 }
@@ -129,11 +124,10 @@ type MultiError struct {
 	lock   sync.Mutex
 }
 
-func (m *MultiError) append(err error) *MultiError {
+func (m *MultiError) append(err error) {
 	m.lock.Lock()
 	m.errors = append(m.errors, err)
 	m.lock.Unlock()
-	return m
 }
 
 // ErrorOrNil returns nil if no errors or multierror if errors occurred
