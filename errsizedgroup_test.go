@@ -19,8 +19,7 @@ func TestErrorSizedGroup(t *testing.T) {
 	ewg := NewErrSizedGroup(10)
 	var c uint32
 
-	for i := 0; i < 1000; i++ {
-		i := i
+	for i := range 1000 {
 		ewg.Go(func() error {
 			time.Sleep(time.Millisecond * 10)
 			atomic.AddUint32(&c, 1)
@@ -45,8 +44,7 @@ func TestErrorSizedGroup_Preemptive(t *testing.T) {
 	ewg := NewErrSizedGroup(10, Preemptive)
 	var c uint32
 
-	for i := 0; i < 100; i++ {
-		i := i
+	for i := range 100 {
 		ewg.Go(func() error {
 			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
 			atomic.AddUint32(&c, 1)
@@ -72,7 +70,7 @@ func TestErrorSizedGroup_Discard(t *testing.T) {
 	ewg := NewErrSizedGroup(10, Discard)
 	var c uint32
 
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		ewg.Go(func() error {
 			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
 			atomic.AddUint32(&c, 1)
@@ -91,7 +89,7 @@ func TestErrorSizedGroup_NoError(t *testing.T) {
 	ewg := NewErrSizedGroup(10)
 	var c uint32
 
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		ewg.Go(func() error {
 			atomic.AddUint32(&c, 1)
 			return nil
@@ -107,8 +105,7 @@ func TestErrorSizedGroup_Term(t *testing.T) {
 	ewg := NewErrSizedGroup(10, TermOnErr)
 	var c uint32
 
-	for i := 0; i < 1000; i++ {
-		i := i
+	for i := range 1000 {
 		ewg.Go(func() error {
 			atomic.AddUint32(&c, 1)
 			if i == 100 {
@@ -131,8 +128,7 @@ func TestErrorSizedGroup_TermOnErr(t *testing.T) {
 	const N = 1000
 	const errIndex = 100 // index of a function that will return an error
 
-	for i := 0; i < N; i++ {
-		i := i
+	for i := range N {
 		ewg.Go(func() error {
 			val := atomic.AddUint32(&c, 1)
 			if i == errIndex || val > uint32(errIndex+1) {
@@ -162,8 +158,7 @@ func TestErrorSizedGroup_TermAndPreemptive(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < 1000; i++ {
-			i := i
+		for i := range 1000 {
 			ewg.Go(func() error {
 				time.Sleep(10 * time.Millisecond)
 				atomic.AddUint32(&c, 1)
@@ -194,7 +189,7 @@ func TestErrorSizedGroup_ConcurrencyLimit(t *testing.T) {
 	maxConcurrentGoroutines := int32(0)
 	ewg := NewErrSizedGroup(5) // Limit of concurrent goroutines set to 5
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		ewg.Go(func() error {
 			atomic.AddInt32(&concurrentGoroutines, 1)
 			defer atomic.AddInt32(&concurrentGoroutines, -1)
@@ -216,8 +211,7 @@ func TestErrorSizedGroup_ConcurrencyLimit(t *testing.T) {
 func TestErrorSizedGroup_MultiError(t *testing.T) {
 	ewg := NewErrSizedGroup(10)
 
-	for i := 0; i < 10; i++ {
-		i := i
+	for i := range 10 {
 		ewg.Go(func() error {
 			return fmt.Errorf("error from goroutine %d", i)
 		})
@@ -226,7 +220,7 @@ func TestErrorSizedGroup_MultiError(t *testing.T) {
 	err := ewg.Wait()
 	assert.NotNil(t, err)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		assert.Contains(t, err.Error(), fmt.Sprintf("error from goroutine %d", i))
 	}
 
@@ -243,8 +237,7 @@ func TestErrorSizedGroup_Cancel(t *testing.T) {
 	var c uint32
 	const N = 1000
 
-	for i := 0; i < N; i++ {
-		i := i
+	for i := range N {
 		time.Sleep(1 * time.Millisecond) // prevent all the goroutines to be started at once
 		ewg.Go(func() error {
 			atomic.AddUint32(&c, 1)
@@ -272,8 +265,7 @@ func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
 	var c uint32
 	const N = 1000
 
-	for i := 0; i < N; i++ {
-		i := i
+	for i := range N {
 		ewg.Go(func() error {
 			atomic.AddUint32(&c, 1)
 			if i == 100 {
@@ -300,7 +292,7 @@ func TestErrorSizedGroup_CancelWithActiveErrors(t *testing.T) {
 	release := make(chan struct{})
 	var returned atomic.Int32
 	const N = 100
-	for i := 0; i < N; i++ {
+	for range N {
 		ewg.Go(func() error {
 			<-release
 			returned.Add(1)
@@ -329,7 +321,7 @@ func ExampleErrSizedGroup_go() {
 	grp := NewErrSizedGroup(10)
 
 	var c uint32
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		// Go call is non-blocking, like regular go statement
 		grp.Go(func() error {
 			// do some work in 10 goroutines in parallel
