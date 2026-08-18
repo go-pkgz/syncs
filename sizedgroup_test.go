@@ -30,6 +30,7 @@ func TestSizedGroup(t *testing.T) {
 func TestSizedGroup_Discard(t *testing.T) {
 	swg := NewSizedGroup(10, Preemptive, Discard)
 	var c uint32
+	base := runtime.NumGoroutine() // count of goroutines not related to the group
 
 	for range 100 {
 		swg.Go(func(ctx context.Context) {
@@ -37,7 +38,7 @@ func TestSizedGroup_Discard(t *testing.T) {
 			atomic.AddUint32(&c, 1)
 		})
 	}
-	assert.True(t, runtime.NumGoroutine() < 15, "goroutines %d", runtime.NumGoroutine())
+	assert.LessOrEqual(t, runtime.NumGoroutine(), base+50, "no goroutine spawned per submitted function")
 	swg.Wait()
 	assert.Equal(t, uint32(10), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }
@@ -45,6 +46,7 @@ func TestSizedGroup_Discard(t *testing.T) {
 func TestSizedGroup_Preemptive(t *testing.T) {
 	swg := NewSizedGroup(10, Preemptive)
 	var c uint32
+	base := runtime.NumGoroutine() // count of goroutines not related to the group
 
 	for range 100 {
 		swg.Go(func(ctx context.Context) {
@@ -52,7 +54,7 @@ func TestSizedGroup_Preemptive(t *testing.T) {
 			atomic.AddUint32(&c, 1)
 		})
 	}
-	assert.True(t, runtime.NumGoroutine() < 15, "goroutines %d", runtime.NumGoroutine())
+	assert.LessOrEqual(t, runtime.NumGoroutine(), base+50, "no goroutine spawned per submitted function")
 	swg.Wait()
 	assert.Equal(t, uint32(100), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }

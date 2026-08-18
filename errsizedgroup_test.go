@@ -40,13 +40,26 @@ func TestErrorSizedGroup(t *testing.T) {
 	assert.Equal(t, uint32(1000), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
 
+// recordMax sets m to v if v is greater than the value m holds already
+func recordMax(m *atomic.Int32, v int32) {
+	for {
+		cur := m.Load()
+		if v <= cur || m.CompareAndSwap(cur, v) {
+			return
+		}
+	}
+}
+
 func TestErrorSizedGroup_Preemptive(t *testing.T) {
 	ewg := NewErrSizedGroup(10, Preemptive)
 	var c uint32
+	base := runtime.NumGoroutine() // count of goroutines not related to the group
+	var running, maxRunning atomic.Int32
 
 	for i := range 100 {
 		ewg.Go(func() error {
-			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
+			defer running.Add(-1)
+			recordMax(&maxRunning, running.Add(1))
 			atomic.AddUint32(&c, 1)
 			if i == 10 {
 				return errors.New("err1")
@@ -59,9 +72,10 @@ func TestErrorSizedGroup_Preemptive(t *testing.T) {
 		})
 	}
 
-	assert.True(t, runtime.NumGoroutine() <= 20, "goroutines %d", runtime.NumGoroutine())
+	assert.LessOrEqual(t, runtime.NumGoroutine(), base+50, "no goroutine spawned per submitted function")
 	err := ewg.Wait()
 	require.NotNil(t, err)
+	assert.LessOrEqual(t, maxRunning.Load(), int32(10), "no more than the group size running at once")
 	assert.True(t, strings.HasPrefix(err.Error(), "2 error(s) occurred:"))
 	assert.Equal(t, uint32(100), c, fmt.Sprintf("%d, not all routines have been executed.", c))
 }
@@ -69,19 +83,23 @@ func TestErrorSizedGroup_Preemptive(t *testing.T) {
 func TestErrorSizedGroup_Discard(t *testing.T) {
 	ewg := NewErrSizedGroup(10, Discard)
 	var c uint32
+	base := runtime.NumGoroutine() // count of goroutines not related to the group
+	var running, maxRunning atomic.Int32
 
 	for range 1000 {
 		ewg.Go(func() error {
-			assert.True(t, runtime.NumGoroutine() < 20, "goroutines %d", runtime.NumGoroutine())
+			defer running.Add(-1)
+			recordMax(&maxRunning, running.Add(1))
 			atomic.AddUint32(&c, 1)
 			time.Sleep(10 * time.Millisecond)
 			return nil
 		})
 	}
 
-	assert.True(t, runtime.NumGoroutine() <= 20, "goroutines %d", runtime.NumGoroutine())
+	assert.LessOrEqual(t, runtime.NumGoroutine(), base+50, "no goroutine spawned per submitted function")
 	err := ewg.Wait()
 	assert.NoError(t, err)
+	assert.LessOrEqual(t, maxRunning.Load(), int32(10), "no more than the group size running at once")
 	assert.Equal(t, uint32(10), c)
 }
 
