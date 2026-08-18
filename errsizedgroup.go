@@ -2,6 +2,7 @@ package syncs
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -160,5 +161,12 @@ func (m *MultiError) Error() string {
 func (m *MultiError) Errors() []error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	return m.errors
+	return slices.Clone(m.errors)
+}
+
+// Unwrap returns all errors collected, allows errors.Is and errors.As to match any of them
+func (m *MultiError) Unwrap() []error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return slices.Clone(m.errors)
 }

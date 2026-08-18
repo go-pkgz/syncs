@@ -16,7 +16,7 @@ func TestSizedGroup(t *testing.T) {
 	swg := NewSizedGroup(10)
 	var c uint32
 
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		swg.Go(func(ctx context.Context) {
 			time.Sleep(5 * time.Millisecond)
 			atomic.AddUint32(&c, 1)
@@ -30,14 +30,15 @@ func TestSizedGroup(t *testing.T) {
 func TestSizedGroup_Discard(t *testing.T) {
 	swg := NewSizedGroup(10, Preemptive, Discard)
 	var c uint32
+	base := runtime.NumGoroutine() // count of goroutines not related to the group
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		swg.Go(func(ctx context.Context) {
 			time.Sleep(5 * time.Millisecond)
 			atomic.AddUint32(&c, 1)
 		})
 	}
-	assert.True(t, runtime.NumGoroutine() < 15, "goroutines %d", runtime.NumGoroutine())
+	assert.LessOrEqual(t, runtime.NumGoroutine(), base+50, "no goroutine spawned per submitted function")
 	swg.Wait()
 	assert.Equal(t, uint32(10), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }
@@ -45,14 +46,15 @@ func TestSizedGroup_Discard(t *testing.T) {
 func TestSizedGroup_Preemptive(t *testing.T) {
 	swg := NewSizedGroup(10, Preemptive)
 	var c uint32
+	base := runtime.NumGoroutine() // count of goroutines not related to the group
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		swg.Go(func(ctx context.Context) {
 			time.Sleep(5 * time.Millisecond)
 			atomic.AddUint32(&c, 1)
 		})
 	}
-	assert.True(t, runtime.NumGoroutine() < 15, "goroutines %d", runtime.NumGoroutine())
+	assert.LessOrEqual(t, runtime.NumGoroutine(), base+50, "no goroutine spawned per submitted function")
 	swg.Wait()
 	assert.Equal(t, uint32(100), c, fmt.Sprintf("%d, not all routines have been executed", c))
 }
@@ -63,7 +65,7 @@ func TestSizedGroup_Canceled(t *testing.T) {
 	swg := NewSizedGroup(10, Preemptive, Context(ctx))
 	var c uint32
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		swg.Go(func(ctx context.Context) {
 			select {
 			case <-ctx.Done():
@@ -83,7 +85,7 @@ func ExampleSizedGroup_go() {
 	grp := NewSizedGroup(10) // create sized waiting group allowing maximum 10 goroutines
 
 	var c uint32
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		grp.Go(func(ctx context.Context) { // Go call is non-blocking, like regular go statement
 			// do some work in 10 goroutines in parallel
 			atomic.AddUint32(&c, 1)
