@@ -260,7 +260,8 @@ func TestErrorSizedGroup_Cancel(t *testing.T) {
 	require.EqualError(t, err, "1 error(s) occurred: [0] {context canceled}")
 	assert.ErrorIs(t, ctx.Err(), context.Canceled, ctx.Err())
 	t.Logf("completed: %d", c)
-	require.LessOrEqual(t, c, uint32(110), "some of goroutines has to be terminated early")
+	// 100 submitted before the cancellation, up to 10 more running and one waiting for the semaphore
+	require.LessOrEqual(t, c, uint32(120), "some of goroutines has to be terminated early")
 }
 
 func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
@@ -287,7 +288,38 @@ func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
 	require.EqualError(t, err, "1 error(s) occurred: [0] {context canceled}")
 	assert.ErrorIs(t, ctx.Err(), context.Canceled, ctx.Err())
 	t.Logf("completed: %d", c)
-	require.LessOrEqual(t, c, uint32(110), "some of goroutines has to be terminated early")
+	// 100 submitted before the cancellation, up to 10 more running and one waiting for the semaphore
+	require.LessOrEqual(t, c, uint32(120), "some of goroutines has to be terminated early")
+}
+
+func TestErrorSizedGroup_CancelWithActiveErrors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ewg := NewErrSizedGroup(4, Context(ctx))
+
+	release := make(chan struct{})
+	var returned atomic.Int32
+	const N = 100
+	for i := 0; i < N; i++ {
+		ewg.Go(func() error {
+			<-release
+			returned.Add(1)
+			return errors.New("failed")
+		})
+	}
+
+	cancel()
+	close(release)
+	for returned.Load() < N/2 { // make sure workers record their errors while the canceled call records ctx.Err()
+		runtime.Gosched()
+	}
+	ewg.Go(func() error { return nil })
+
+	err := ewg.Wait()
+	require.Error(t, err)
+	var merr *MultiError
+	require.True(t, errors.As(err, &merr))
+	assert.Len(t, merr.Errors(), N+1)
 }
 
 // illustrates the use of a SizedGroup for concurrent, limited execution of goroutines.
