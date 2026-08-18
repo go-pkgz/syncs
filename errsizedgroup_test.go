@@ -247,6 +247,27 @@ func TestErrorSizedGroup_MultiError(t *testing.T) {
 	assert.Len(t, merr.Errors(), 10)
 }
 
+func TestErrorSizedGroup_MultiErrorUnwrap(t *testing.T) {
+	errFirst := errors.New("first")
+	errSecond := errors.New("second")
+
+	ewg := NewErrSizedGroup(2)
+	ewg.Go(func() error { return fmt.Errorf("wrapped: %w", errFirst) })
+	ewg.Go(func() error { return errSecond })
+
+	err := ewg.Wait()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errFirst, "matches the wrapped error of one of the goroutines")
+	assert.ErrorIs(t, err, errSecond)
+	assert.NotErrorIs(t, err, errors.New("something else"))
+
+	var merr *MultiError
+	require.ErrorAs(t, err, &merr)
+	merr.Errors()[0] = nil // the caller can't affect the collected errors
+	assert.Len(t, merr.Errors(), 2)
+	assert.NotNil(t, merr.Errors()[0])
+}
+
 func TestErrorSizedGroup_Cancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
