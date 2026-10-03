@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSizedGroup(t *testing.T) {
@@ -77,6 +78,47 @@ func TestSizedGroup_Canceled(t *testing.T) {
 	}
 	swg.Wait()
 	assert.True(t, c < 100)
+}
+
+func TestSizedGroup_CanceledPreemptiveReleasesPermit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	swg := NewSizedGroup(1, Preemptive, Context(ctx))
+	locker := &signalingLocker{Locker: swg.sema, locking: make(chan struct{}, 1)}
+	swg.sema = locker
+
+	wait := func(ch <-chan struct{}) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for the group")
+		}
+	}
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	started := make(chan struct{})
+	swg.Go(func(context.Context) {
+		close(started)
+		<-release
+	})
+	wait(started)
+
+	var called atomic.Bool
+	submitted := make(chan struct{})
+	go func() {
+		swg.Go(func(context.Context) { called.Store(true) })
+		close(submitted)
+	}()
+	wait(locker.locking)
+	cancel()
+	release <- struct{}{}
+	wait(submitted)
+	swg.Wait()
+
+	assert.False(t, called.Load(), "callback submitted before cancel must not run after it")
+	require.True(t, swg.sema.TryLock(), "skipped work must release its permit")
+	swg.sema.Unlock()
 }
 
 // illustrates the use of a SizedGroup for concurrent, limited execution of goroutines.
