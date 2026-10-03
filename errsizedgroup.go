@@ -97,13 +97,13 @@ func (g *ErrSizedGroup) Go(f func() error) {
 			}
 		}()
 
-		if terminated() {
-			return // terminated due prev error, don't run anything in this group anymore
-		}
-
 		if !g.preLock {
 			g.sema.Lock()
 			isLocked = true
+		}
+
+		if terminated() {
+			return // terminated due prev error, don't run anything in this group anymore
 		}
 
 		if err := f(); err != nil {

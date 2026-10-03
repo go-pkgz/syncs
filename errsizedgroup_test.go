@@ -202,6 +202,81 @@ func TestErrorSizedGroup_TermAndPreemptive(t *testing.T) {
 	}
 }
 
+type signalingLocker struct {
+	Locker
+	locking chan struct{}
+}
+
+func (s *signalingLocker) Lock() {
+	s.locking <- struct{}{}
+	s.Locker.Lock()
+}
+
+func TestErrorSizedGroup_QueuedTermination(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		preemptive bool
+		terminate  bool
+	}{
+		{name: "waiting goroutine", terminate: true},
+		{name: "preemptive", preemptive: true, terminate: true},
+		{name: "waiting goroutine without termination"},
+		{name: "preemptive without termination", preemptive: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ewg := NewErrSizedGroup(1)
+			if tc.preemptive {
+				Preemptive(&ewg.options)
+			}
+			if tc.terminate {
+				TermOnErr(&ewg.options)
+			}
+			locker := &signalingLocker{Locker: ewg.sema, locking: make(chan struct{}, 1)}
+			ewg.sema = locker
+
+			wait := func(ch <-chan struct{}) {
+				t.Helper()
+				select {
+				case <-ch:
+				case <-time.After(time.Second):
+					t.Fatal("timed out waiting for the group")
+				}
+			}
+			release := make(chan struct{}, 1)
+			t.Cleanup(func() { close(release) })
+			started := make(chan struct{})
+			firstErr := errors.New("first callback failed")
+			ewg.Go(func() error {
+				close(started)
+				<-release
+				return firstErr
+			})
+			wait(started)
+			if !tc.preemptive {
+				wait(locker.locking)
+			}
+
+			var called atomic.Bool
+			submitted := make(chan struct{})
+			go func() {
+				ewg.Go(func() error {
+					called.Store(true)
+					return nil
+				})
+				close(submitted)
+			}()
+			wait(locker.locking)
+			release <- struct{}{}
+			wait(submitted)
+
+			assert.ErrorIs(t, ewg.Wait(), firstErr)
+			assert.Equal(t, !tc.terminate, called.Load())
+			require.True(t, ewg.sema.TryLock(), "queued work must release its permit")
+			ewg.sema.Unlock()
+		})
+	}
+}
+
 func TestErrorSizedGroup_ConcurrencyLimit(t *testing.T) {
 	concurrentGoroutines := int32(0)
 	maxConcurrentGoroutines := int32(0)
