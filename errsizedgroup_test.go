@@ -277,6 +277,95 @@ func TestErrorSizedGroup_QueuedTermination(t *testing.T) {
 	}
 }
 
+func TestErrorSizedGroup_QueuedCancel(t *testing.T) {
+	errFirst := errors.New("first callback failed")
+	for _, tc := range []struct {
+		name       string
+		preemptive bool
+		terminate  bool
+		firstErr   error
+	}{
+		{name: "waiting goroutine"},
+		{name: "preemptive", preemptive: true},
+		{name: "waiting goroutine with termination", terminate: true},
+		{name: "preemptive with termination", preemptive: true, terminate: true},
+		{name: "waiting goroutine, running callback fails", firstErr: errFirst},
+		{name: "preemptive, running callback fails", preemptive: true, firstErr: errFirst},
+		{name: "waiting goroutine with termination, running callback fails", terminate: true, firstErr: errFirst},
+		{name: "preemptive with termination, running callback fails", preemptive: true, terminate: true, firstErr: errFirst},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ewg := NewErrSizedGroup(1, Context(ctx))
+			if tc.preemptive {
+				Preemptive(&ewg.options)
+			}
+			if tc.terminate {
+				TermOnErr(&ewg.options)
+			}
+			locker := &signalingLocker{Locker: ewg.sema, locking: make(chan struct{}, 1)}
+			ewg.sema = locker
+
+			wait := func(ch <-chan struct{}) {
+				t.Helper()
+				select {
+				case <-ch:
+				case <-time.After(time.Second):
+					t.Fatal("timed out waiting for the group")
+				}
+			}
+			release := make(chan struct{})
+			t.Cleanup(func() { close(release) })
+			started := make(chan struct{})
+			ewg.Go(func() error {
+				close(started)
+				<-release
+				return tc.firstErr
+			})
+			wait(started)
+			if !tc.preemptive {
+				wait(locker.locking)
+			}
+
+			const queued = 3
+			var called atomic.Int32
+			submitted := make(chan struct{}, queued)
+			for range queued {
+				go func() {
+					ewg.Go(func() error {
+						called.Add(1)
+						return nil
+					})
+					submitted <- struct{}{}
+				}()
+			}
+			for range queued {
+				wait(locker.locking)
+			}
+			cancel()
+			release <- struct{}{}
+			for range queued {
+				wait(submitted)
+			}
+
+			err := ewg.Wait()
+			require.ErrorIs(t, err, context.Canceled)
+			var merr *MultiError
+			require.ErrorAs(t, err, &merr)
+			wantErrs := 1
+			if tc.firstErr != nil {
+				wantErrs = 2
+				assert.ErrorIs(t, err, tc.firstErr)
+			}
+			assert.Len(t, merr.Errors(), wantErrs, "cancellation is recorded once")
+			assert.Zero(t, called.Load(), "queued callbacks must not run after cancellation")
+			require.True(t, ewg.sema.TryLock(), "queued work must release its permit")
+			ewg.sema.Unlock()
+		})
+	}
+}
+
 func TestErrorSizedGroup_ConcurrencyLimit(t *testing.T) {
 	concurrentGoroutines := int32(0)
 	maxConcurrentGoroutines := int32(0)
@@ -401,17 +490,21 @@ func TestErrorSizedGroup_CancelWithPreemptive(t *testing.T) {
 func TestErrorSizedGroup_CancelWithActiveErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ewg := NewErrSizedGroup(4, Context(ctx))
+	const N = 100
+	ewg := NewErrSizedGroup(N, Context(ctx))
 
 	release := make(chan struct{})
-	var returned atomic.Int32
-	const N = 100
+	var started, returned atomic.Int32
 	for range N {
 		ewg.Go(func() error {
+			started.Add(1)
 			<-release
 			returned.Add(1)
 			return errors.New("failed")
 		})
+	}
+	for started.Load() < N {
+		runtime.Gosched()
 	}
 
 	cancel()
