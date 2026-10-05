@@ -26,9 +26,14 @@ func (s *semaphore) Lock() {
 	s.ch <- struct{}{}
 }
 
-// Unlock releases semaphore, can block if nothing acquired before.
+// Unlock releases semaphore. It panics if called without a matching Lock/TryLock,
+// matching sync.Mutex rather than blocking forever on an empty channel.
 func (s *semaphore) Unlock() {
-	<-s.ch
+	select {
+	case <-s.ch:
+	default:
+		panic("syncs: unlock of unlocked semaphore")
+	}
 }
 
 // TryLock acquires semaphore if possible, returns true if acquired, false otherwise.

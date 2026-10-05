@@ -85,3 +85,18 @@ func TestSemaphore_TryLock(t *testing.T) {
 		})
 	}
 }
+
+func TestSemaphore_UnlockUnlocked(t *testing.T) {
+	sema := NewSemaphore(1)
+	assert.PanicsWithValue(t, "syncs: unlock of unlocked semaphore", func() {
+		sema.Unlock()
+	})
+
+	sema.Lock()
+	assert.NotPanics(t, func() {
+		sema.Unlock()
+	})
+	assert.PanicsWithValue(t, "syncs: unlock of unlocked semaphore", func() {
+		sema.Unlock()
+	})
+}
