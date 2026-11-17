@@ -7,6 +7,7 @@ type options struct {
 	preLock       bool
 	termOnError   bool
 	discardIfFull bool
+	threshold     int
 }
 
 // GroupOption functional option type
@@ -33,4 +34,16 @@ func TermOnErr(o *options) {
 func Discard(o *options) {
 	o.discardIfFull = true
 	o.preLock = true // discard implies preemptive
+}
+
+// DiscardAfterThreshold accepts up to threshold calls in flight, running or waiting to run, and
+// discards the rest. The Go call never blocks: accepted calls past the group size wait in their
+// goroutines. With threshold above the group size it overrides Preemptive and Discard in any order,
+// otherwise it works as Discard. SizedGroup only, ErrSizedGroup treats it as Discard.
+func DiscardAfterThreshold(threshold int) GroupOption {
+	return func(o *options) {
+		o.threshold = threshold
+		o.discardIfFull = true
+		o.preLock = true
+	}
 }

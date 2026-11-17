@@ -59,6 +59,18 @@ Another option is `Discard`, which will skip (won't start) goroutines if the sem
 	swg.Wait()
 ```
 
+`DiscardAfterThreshold(n)` sits between the default mode and `Discard`. The group accepts up to `n` calls in flight, running or waiting to run, and discards the rest. The `Go` call never blocks: accepted calls beyond the group size wait in their goroutines until a slot frees up. With `n` above the group size, this option overrides `Preemptive` and `Discard`. With `n` at or below the group size, including 0, it works as `Discard`. It applies to `SizedGroup` only; `ErrSizedGroup` treats it as `Discard`.
+
+```go
+	swg := syncs.NewSizedGroup(5, syncs.DiscardAfterThreshold(8)) // max 5 running, 3 more can wait
+	for i :=0; i<10; i++ {
+		swg.Go(func(ctx context.Context){
+			doThings(ctx) // 5 run in parallel, up to 3 wait for a free slot, the rest are discarded
+		})
+	}
+	swg.Wait()
+```
+
 
 ### ErrSizedGroup
 

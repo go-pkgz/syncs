@@ -10,8 +10,9 @@ import (
 // SizedGroup interface enforces constructor usage and doesn't allow direct creation of sizedGroup
 type SizedGroup struct {
 	options
-	wg   sync.WaitGroup
-	sema Locker
+	wg    sync.WaitGroup
+	sema  Locker
+	admit Locker // caps calls in flight with DiscardAfterThreshold above size, nil otherwise
 }
 
 // NewSizedGroup makes wait group with limited size alive goroutines
@@ -20,6 +21,11 @@ func NewSizedGroup(size int, opts ...GroupOption) *SizedGroup {
 	res.ctx = context.Background()
 	for _, opt := range opts {
 		opt(&res.options)
+	}
+	if res.threshold > max(size, 1) { // match NewSemaphore's minimum size of 1
+		res.admit = NewSemaphore(res.threshold)
+		// left on, Preemptive blocks the caller and Discard drops an admitted call holding its slot
+		res.preLock, res.discardIfFull = false, false
 	}
 	return &res
 }
@@ -40,6 +46,10 @@ func (g *SizedGroup) Go(fn func(ctx context.Context)) {
 		return
 	}
 
+	if g.admit != nil && !g.admit.TryLock() {
+		return
+	}
+
 	if g.preLock {
 		lockOk := g.sema.TryLock()
 		if !lockOk && g.discardIfFull {
@@ -54,6 +64,9 @@ func (g *SizedGroup) Go(fn func(ctx context.Context)) {
 	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
+		if g.admit != nil {
+			defer g.admit.Unlock()
+		}
 
 		isLocked := g.preLock // with preLock the permit is already held by the time goroutine starts
 		defer func() {
